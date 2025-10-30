@@ -1,94 +1,90 @@
-# T-SMOTE: Temporal Synthetic Minority Oversampling Technique for Time-Series Classification
+# T-SMOTE: *Temporal-oriented Synthetic Minority Oversampling Technique for Imbalanced Time Series Classification*
 
-When I first encountered **T-SMOTE**, it immediately stood out as more than just another oversampling algorithm.  
-It addresses one of the most fundamental problems in time-series learning — **how to synthesize new samples that understand time**.
+T-SMOTE is more than a conventional oversampling algorithm - it represents a shift in how we approach data imbalance in time-series classification.
+While traditional techniques like SMOTE operate on static, tabular data by interpolating between isolated samples, they overlook a crucial aspect of sequential data: temporal continuity.
 
-Traditional oversampling techniques like SMOTE treat data points as isolated records.  
-But in time-series, **every observation carries temporal context** — the meaning of one timestamp depends on what came before it.  
-T-SMOTE introduces *temporal reasoning* into synthetic sample generation, ensuring that the artificial sequences preserve the evolving dynamics of real-world signals.
+T-SMOTE introduces a time-aware framework that respects the evolving nature of time-series signals. Instead of treating each observation independently, it generates synthetic sequences that follow the real-world dynamics of events - maintaining both structural integrity and chronological order.
 
----
-
-## Reference Paper
-
-> **Yuxin Luo, Yichao Shen, Jiajie Li, and Liang He (2022)**  
-> *T-SMOTE: A Temporal Synthetic Minority Oversampling Technique for Time-Series Classification*  
-> In *Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)*.  
 > [🔗 Read the paper on IJCAI](https://www.ijcai.org/proceedings/2022/0431.pdf)
 
 ---
 
-## 🎯 Purpose of This Notebook
+## SMOTE vs T-SMOTE
 
-This notebook represents my **hands-on, from-scratch implementation** of the original T-SMOTE framework.  
-Rather than reproducing the exact code from the paper, my goal was to deeply **understand the intuition and mathematics** behind each step — and make it *explainable, visual, and reproducible* for other researchers and practitioners.
+Traditional SMOTE (Synthetic Minority Oversampling Technique) works by linearly interpolating between existing minority samples:
 
-I wanted to trace every part of the reasoning:
-- How *leading time* captures temporal distance from the event boundary,  
-- How the **spy-based classifier** defines the decision threshold dynamically,  
-- How the **Beta distribution** controls interpolation between subsequences,  
-- And how the **weighted sampling strategy** filters out noisy synthetic samples.
+x_new = x_i + λ × (x_j − x_i), where λ ∈ [0, 1]
 
-This notebook breaks down the T-SMOTE pipeline into concrete, visual steps for learning and experimentation.
 
----
+This approach is effective for tabular datasets, where each record is independent.  
+However, when applied to time-series data, it breaks down due to several key issues:
 
-## 🔬 The Core Intuition
+- **Loss of temporal order**: Flattening sequences into feature vectors destroys the natural timeline of the data.
+- **Unrealistic transitions**: Interpolation mixes values across unrelated timestamps, producing distorted signals.
+- **No temporal context**: Trends, anomalies, and event progressions are ignored, making generated samples unreliable.
 
-Imagine predicting an upcoming fault in a machine, or a physiological anomaly in medical data.  
-We have hundreds of “normal” sequences but only a handful of rare failures — a classic class imbalance problem.
-
-T-SMOTE doesn’t simply duplicate rare events.  
-It **creates realistic temporal variations** of those sequences by:
-
-1. **Sliding windows** across each time-series to form overlapping subsequences (controlled by window length *w* and leading time *l*).  
-2. **Evaluating model confidence** across different lead times to determine how far from the event boundary each window lies.  
-3. **Interpolating** between temporally adjacent windows using the **Beta distribution**, reflecting asymmetric uncertainty between them.  
-4. **Assigning weights** to new synthetic samples based on how confidently they lie near the decision boundary.
-
-The outcome is a set of synthetic time-series that are both **statistically balanced** and **temporally consistent**.
+T-SMOTE addresses these limitations by introducing temporal awareness.  
+Instead of interpolating between random samples, it mixes adjacent windows from the same time-series sequence — guided by model confidence.  
+This creates synthetic sequences that not only balance the dataset but also reflect how real events unfold over time.
 
 ---
 
-## 🧩 What This Notebook Demonstrates
+## How T-SMOTE Works - Step by Step
 
-1. **Synthetic Data Generation** – Multivariate time-series for positive and negative classes  
-2. **Spy-Based Classifier** – Logistic regression trained to estimate temporal border confidence  
-3. **Leading-Time Analysis** – Progressive window slicing with increasing *l*  
-4. **Temporal Interpolation** – Beta-based generation of synthetic sequences  
-5. **Weighted Sampling** – Noise control near class boundaries  
-6. **Reconstruction & Visualization** – Rebuilding full-length synthetic sequences and visual comparison  
+T-SMOTE generates temporally consistent synthetic samples by following a structured pipeline. Here's how it works:
+
+### 1. Slice Sequences into Leading-Time Windows
+
+Each positive sample (e.g., a time-series before failure) is divided into overlapping windows of fixed length `w`, sliding backward from the event.  
+Each window is defined by its leading time `l`, which controls how far it ends before the event.
+
+For example:
+- `l = 0` gives the last window (closest to the event),
+- `l = 1` gives the one just before that, and so on.
+
+This creates a series of windows: `X⁽⁰⁾`, `X⁽¹⁾`, ..., `X⁽ˡ⁾`.
+
+### 2. Score Each Window Using a Classifier
+
+A classifier is trained on the original dataset (no synthetic data yet).  
+Each window is passed through the classifier to estimate how "positive" it looks — that is, how likely it belongs to the minority class.
+
+As windows move further from the event (increasing `l`), their scores typically decrease.
+
+### 3. Apply the Spy-Based Threshold to Define Near-Border Windows
+
+To avoid going too far back in time, T-SMOTE uses a spy-based approach to determine a cutoff `L`:
+
+- Randomly select a small portion (e.g., 15%) of negative samples and relabel them as temporary "spies".
+- Retrain the classifier with these spies included as positives.
+- The highest score among the spies defines a threshold `h`.
+- For each `l`, compute the average score across all windows `X⁽ˡ⁾`.
+- Stop at the first `l` where this average drops below `h`; set `L = l - 1`.
+
+Only windows up to `l = L` are kept. These are considered "near-border" positive windows — close enough to the event to remain informative, but not so early as to drift into the negative class.
+
+### 4. Interpolate Between Temporal Neighbors
+
+Synthetic samples are generated by interpolating between consecutive windows from the same sequence (e.g., `X⁽ˡ⁾` and `X⁽ˡ⁺¹⁾`), not random samples.  
+The mixing coefficient α is drawn from a Beta distribution shaped by their classifier scores:
+
+X_new = α × X⁽ˡ⁾ + (1 − α) × X⁽ˡ⁺¹⁾
+
+α ~ Beta(score⁽ˡ⁾, score⁽ˡ⁺¹⁾)
+
+
+This ensures the synthetic sequence follows a natural, confident progression over time.
+
+### 5. Filter with Weighted Sampling
+
+Not all synthetic windows are equally useful.  
+T-SMOTE computes a weight for each new sample based on how far its interpolated score lies above the spy threshold `h`:
+
+weight = max(0, score_new − h)
+
+
+Only high-confidence synthetic samples are retained — minimizing noise and improving the quality of the augmented dataset.
 
 ---
 
-## 💡 Why This Work Matters
-
-Imbalanced time-series appear across domains — predictive maintenance, biomedical monitoring, IoT, and behavioral analytics.  
-Yet, most resampling strategies still ignore the sequential nature of the data.
-
-T-SMOTE changes that perspective.  
-It proves that synthetic data generation isn’t just about balancing numbers — it’s about **preserving the story of time** within the data itself.
-
-This notebook is not a replication of the paper, but an **interpretation for understanding** — a way to see *why* the method works, not just *how*.
-
----
-
-## 🧠 Repository Goals
-
-- Make the T-SMOTE process **accessible, interpretable, and visual**  
-- Provide a **transparent baseline** for future work in temporal data augmentation  
-- Inspire more research into **time-aware synthetic learning**  
-
----
-
-## 👤 Author
-
-**Prashanna Raj Pandit**  
-Graduate Researcher, M.S. Computer Science  
-Southern Illinois University Edwardsville  
-Focus: Sequential Modeling, Gait Analysis, Temporal AI Systems  
-
-> “Synthetic data shouldn’t just exist — it should remember time.”
-
----
-
+This pipeline allows T-SMOTE to generate high-quality, realistic samples that preserve both the statistical and temporal integrity of the original time-series data.
