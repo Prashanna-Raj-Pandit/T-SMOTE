@@ -1,4 +1,4 @@
-# Implementation of the Paper — *T-SMOTE: Temporal Synthetic Minority Oversampling Technique for Time-Series Classification*
+# T-SMOTE: Temporal Synthetic Minority Oversampling Technique for Time-Series Classification
 
 When I first encountered **T-SMOTE**, it immediately stood out as more than just another oversampling algorithm.  
 It addresses one of the most fundamental problems in time-series learning — **how to synthesize new samples that understand time**.
@@ -9,7 +9,7 @@ T-SMOTE introduces *temporal reasoning* into synthetic sample generation, ensuri
 
 ---
 
-## 📘 Reference Paper
+## Reference Paper
 
 > **Yuxin Luo, Yichao Shen, Jiajie Li, and Liang He (2022)**  
 > *T-SMOTE: A Temporal Synthetic Minority Oversampling Technique for Time-Series Classification*  
